@@ -3,7 +3,7 @@
 client_id = "e38c9e6463e93e5c12ec9b3249729d15"
 name = "Bogo Discounts"
 handle = "bogo-discounts-2"
-application_url = "https://sons-jersey-generic-turbo.trycloudflare.com"
+application_url = "https://sku-chan-isaac-marilyn.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-07"
 scopes = "write_products"
 
 [auth]
-redirect_urls = ["https://sons-jersey-generic-turbo.trycloudflare.com/auth/callback", "https://sons-jersey-generic-turbo.trycloudflare.com/auth/shopify/callback", "https://sons-jersey-generic-turbo.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://sku-chan-isaac-marilyn.trycloudflare.com/auth/callback", "https://sku-chan-isaac-marilyn.trycloudflare.com/auth/shopify/callback", "https://sku-chan-isaac-marilyn.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

@@ -339,9 +339,8 @@ import {
   Icon,
   Box,
 } from "@shopify/polaris";
-import { LightbulbIcon, LinkIcon } from "@shopify/polaris-icons";
+import { LightbulbIcon, TargetFilledIcon } from "@shopify/polaris-icons";
 
-// ✅ JSON config for campaign types
 const campaigns = [
   {
     id: "buy-x-get-y",
@@ -352,7 +351,8 @@ const campaigns = [
     image:
       "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/bxgy.png?width=400",
     exampleIcon: LightbulbIcon,
-    noteIcon: LinkIcon,
+    noteIcon: TargetFilledIcon,
+    link: 'buy-x-get-y'
   },
   {
     id: "cart-value",
@@ -361,31 +361,32 @@ const campaigns = [
     example: "Spend $250, get a free table",
     note: "Based on total spend",
     image:
-      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/bxgy.png?width=400",
+      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/gwca.png?width=400",
     exampleIcon: LightbulbIcon,
-    noteIcon: LinkIcon,
+    noteIcon: TargetFilledIcon,
   },
   {
     id: "free-shipping-1",
-    title: "Free Shipping",
-    description: "Give free shipping when conditions are met",
-    example: "Orders above $100 ship free",
-    note: "Location or spend based",
+    title: "Shipping Goal",
+    description: "Free or discounted shipping on minimum spend",
+    example: "Spend $75 for free express shipping",
+    note: "Shipping cost focus",
     image:
-      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/bxgy.png?width=400",
+      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/shipping-goal.png?width=400",
     exampleIcon: LightbulbIcon,
-    noteIcon: LinkIcon,
+    noteIcon: TargetFilledIcon,
   },
+
   {
-    id: "free-shipping-2",
-    title: "Free Shipping",
-    description: "Give free shipping when conditions are met",
-    example: "Orders above $100 ship free",
-    note: "Location or spend based",
+    id: "Gift With Quantity Purchase",
+    title: "Gift With Quantity Purchase",
+    description: "Buy a total number of items to get a discount",
+    example: "Buy 3 items, get 10% off",
+    note: "Item quantity focus",
     image:
-      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/bxgy.png?width=400",
+      "https://cdnapps.avada.io/ag-free-gift/giftCampaigns/gwqu.png?width=400",
     exampleIcon: LightbulbIcon,
-    noteIcon: LinkIcon,
+    noteIcon: TargetFilledIcon,
   },
 ];
 
@@ -399,71 +400,86 @@ export default function CampaignsPage() {
           <Grid.Cell
             key={campaign.id}
             columnSpan={{ xs: 6, sm: 3, md: 3, lg: 4, xl: 4 }}
+            style={{ display: "flex", alignItems: "stretch" }} 
           >
-            <Card>
-              <BlockStack gap="10" align="start">
-                <Box
-                  as="div"
-                  width="100%"
-                  padding="2"
-                  style={{ textAlign: "left" }}
+            <Card style={{ flex: 1, display: "flex", flexDirection: "column", padding: '0px'  }}>
+               <img
+                  src={campaign.image}
+                  alt={campaign.title}
+                  style={{
+                    width: "100%",
+                    height: "160px",
+                    objectFit: "cover",
+                    borderTopLeftRadius: "8px",
+                    borderTopRightRadius: "8px",
+                  }}
+                />
+              <Box
+                as="div"
+                width="100%"
+                padding="0"
+                style={{
+                  textAlign: "left",
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
+                
+                <BlockStack gap='100'>
+                {/* Thumbnail */}
+               
+
+                {/* Title + description */}
+                <Text
+                  variant="headingSm"
+                  as="h3"
+                  tone="default"
+                  alignment="start"
+                  style={{ paddingTop: "10px" }}
                 >
-                  {/* Thumbnail */}
-                  <img
-                    src={campaign.image}
-                    alt={campaign.title}
-                    style={{
-                      width: "100%",
-                      height: "160px",
-                      objectFit: "cover",
-                      borderTopLeftRadius: "8px",
-                      borderTopRightRadius: "8px",
-                    }}
-                  />
+                  {campaign.title}
+                </Text>
+                <p style={{ fontSize: "12px" }}>{campaign.description}</p>
 
-                  {/* Title + description */}
-                  <Text
-                    variant="headingSm"
-                    as="h3"
-                    tone="default"
-                    alignment="start"
-                    style={{ paddingTop: "6px", }}
-                  >
-                    {campaign.title}
-                  </Text>
-                  <Text as="p" alignment="start">
-                    {campaign.description}
-                  </Text>
+                {/* Example row */}
+                <InlineStack gap="100" blockAlign="center" align="start">
+                  {" "}
+                  <div style={{ marginRight: "0", marginLeft: 0 }}>
+                    {" "}
+                    <Icon source={campaign.exampleIcon} tone="subdued" />{" "}
+                  </div>{" "}
+                  <p style={{ fontSize: "12px", color: "#616161" }}>
+                    {" "}
+                    {campaign.example}{" "}
+                  </p>{" "}
+                  {/* <Text as="span" tone="subdued"> </Text> */}{" "}
+                </InlineStack>
 
-                  <InlineStack gap="4" blockAlign="center" align="start">
-                    <div style={{ marginRight: "0", marginLeft: 0 }}>
-                      <Icon source={campaign.exampleIcon} tone="subdued" />
-                    </div>
-                      <Text as="span" tone="subdued">
-                        {campaign.example}
-                      </Text>
-                  </InlineStack>
+                {/* Note row */}
+                <InlineStack gap="100" blockAlign="center" align="start">
+                  {" "}
+                  <div style={{ marginRight: "0", marginLeft: 0 }}>
+                    {" "}
+                    <Icon source={campaign.noteIcon} tone="subdued" />{" "}
+                  </div>{" "}
+                  <p style={{ fontSize: "12px", color: "#616161" }}>
+                    {" "}
+                    {campaign.note}{" "}
+                  </p>{" "}
+                  {/* <Text as="span" tone="subdued"> {campaign.note} </Text> */}{" "}
+                </InlineStack>
 
-                  <InlineStack gap="4" blockAlign="center" align="start">
-                    <div style={{ marginRight: "0", marginLeft: 0 }}>
-                      <Icon source={campaign.noteIcon} tone="subdued" />
-                    </div>
-                      <Text as="span" tone="subdued">
-                        {campaign.note}
-                      </Text>
-                  </InlineStack>
-                  {/* Example row */}
-                  {/* <InlineStack gap="4" blockAlign="center" align="start"> */}
-                  {/* <Icon source={campaign.exampleIcon} tone="subdued" /> */}
-                  {/* </InlineStack> */}
-
-
-                  {/* Action button */}
-                  <Button onClick={() => navigate(`/campaigns/${campaign.id}`)}>
-                    Create
-                  </Button>
+                {/* Button pinned at bottom */}
+                <Box style={{ marginTop: "10px" }}>
+                  {" "}
+                  <Button onClick={() => navigate(`${campaign.link}`)}>
+                    Create{" "}
+                  </Button>{" "}
                 </Box>
-              </BlockStack>
+
+                </BlockStack>
+              </Box>
             </Card>
           </Grid.Cell>
         ))}
