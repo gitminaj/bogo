@@ -297,6 +297,17 @@ export default function Buyxgety() {
                       label="Start time"
                       onChange={() => {}}
                     />
+                    <TextField
+                      type="date"
+                      label="End date"
+                      onChange={() => {}}
+                      autoComplete="off"
+                    />
+                    <TextField
+                      type="time"
+                      label="End time"
+                      onChange={() => {}}
+                    />
                   </FormLayout.Group>
                 </FormLayout>
               </BlockStack>
