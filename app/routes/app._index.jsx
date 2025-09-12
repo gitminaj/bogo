@@ -356,7 +356,7 @@ const campaigns = [
   },
   {
     id: "cart-value",
-    title: "Gift With Cart Value",
+    title: "Free Gift Offers",
     description: "Spend more, get free gift/discount",
     example: "Spend $250, get a free table",
     note: "Based on total spend",
@@ -367,8 +367,8 @@ const campaigns = [
   },
   {
     id: "free-shipping-1",
-    title: "Shipping Goal",
-    description: "Free or discounted shipping on minimum spend",
+    title: "Combo / Hybrid Offers",
+    description: "Buy 1, get 1 free + 10% off rest of cart.",
     example: "Spend $75 for free express shipping",
     note: "Shipping cost focus",
     image:
