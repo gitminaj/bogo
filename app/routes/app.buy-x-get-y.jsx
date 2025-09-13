@@ -22,7 +22,7 @@ import {
 } from "@shopify/polaris";
 import { CaretUpIcon, CaretDownIcon } from "@shopify/polaris-icons";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
@@ -42,29 +42,51 @@ export async function action({ request }) {
     const data = JSON.parse(offerDataString);
     console.log("Parsed offer data:", data);
 
-    // Save in DB first
+    let rewardType = "free";
+    let rewardValue = null;
+
+    if (data.discountType.includes("percentage")) {
+      rewardType = "percentage";
+      rewardValue = parseFloat(data.percentage);
+    } else if (data.discountType.includes("fixed")) {
+      rewardType = "fixed";
+      rewardValue = parseFloat(data.fixedPrice);
+    }
+
+    // Save in DB
     const offer = await prisma.offer.create({
       data: {
         title: data.title,
         triggerType: data.triggerType,
-        triggerIds: data.selectedProducts.map((p) => p.id),
+        triggerIds:
+          data.triggerType === "products"
+            ? data.selectedProducts.map((p) => p.id)
+            : data.selectedCollections.map((c) => c.id),
         minQty: parseInt(data.minQuantity, 10),
-        rewardType: "free",
-        rewardValue: null,
+
+        rewardType,
+        rewardValue,
         rewardApplyTo: "selected",
-        rewardIds: [],
-        rewardQty: 1,
+        rewardIds:
+          data.getType === "products"
+            ? data.getProducts.map((p) => p.id)
+            : data.getCollections.map((c) => c.id),
+        rewardQty: parseInt(data.getQuantity, 10) || 1,
+
         combinesOrder: data.combines?.orderDiscounts || false,
         combinesProduct: data.combines?.productDiscounts || false,
         combinesShipping: data.combines?.shippingDiscounts || false,
-        limitTotalUses: data.usageLimits?.includes("limit_total") ? null : null,
+
+        limitTotalUses: data.usageLimits?.includes("limit_total") || false,
         limitPerCustomer:
           data.usageLimits?.includes("limit_per_customer") || false,
+
         startsAt: new Date(`${data.startsAt}T${data.startTime || "00:00"}:00Z`),
         endsAt: data.endsAt
           ? new Date(`${data.endsAt}T${data.endTime || "23:59"}:00Z`)
           : null,
-        functionId: "0199377a-e148-7a61-bedb-f7d25bd5d3ab", // BXGY doesn't need function ID
+
+        functionId: "0199377a-e148-7a61-bedb-f7d25bd5d3ab",
         status: "DRAFT",
       },
     });
@@ -124,6 +146,18 @@ export async function action({ request }) {
       }
     `;
 
+    let effect = {};
+
+    if (data.discountType.includes("free")) {
+      effect = { percentage: 1 }; // 100% off
+    } else if (data.discountType.includes("percentage")) {
+      effect = { percentage: parseFloat(data.percentage) / 100 };
+    } else if (data.discountType.includes("fixed")) {
+      effect = {
+        fixedAmount: { amount: data.fixedPrice, appliesOnEachItem: true },
+      };
+    }
+
     var variables = {
       automaticBxgyDiscount: {
         title: data.title,
@@ -151,9 +185,7 @@ export async function action({ request }) {
           value: {
             discountOnQuantity: {
               quantity: data.getQuantity.toString(),
-              effect: {
-                percentage: 1, // 100% off = FREE
-              },
+              effect,
             },
           },
           items: {
@@ -244,12 +276,16 @@ export default function BuyXGetY() {
     getType: "products",
     getProducts: [],
 
-    discountType: [],
     combines: {
       productDiscounts: false,
       orderDiscounts: false,
       shippingDiscounts: false,
     },
+
+    discountType: ["free"],
+    percentage: "",
+    fixedPrice: "",
+
     usageLimits: [],
     customerEligibility: "all",
     startsAt: "",
@@ -259,9 +295,9 @@ export default function BuyXGetY() {
   });
 
   const [openSections, setOpenSections] = useState({
-    section1: true,
-    section2: true,
-    section3: true,
+    section1: false,
+    section2: false,
+    section3: false,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -351,6 +387,13 @@ export default function BuyXGetY() {
     }
     if (!formData.startsAt) errors.push("Start date is required");
 
+    if (formData.discountType.includes("percentage") && !formData.percentage) {
+      errors.push("Enter a percentage value");
+    }
+    if (formData.discountType.includes("fixed") && !formData.fixedPrice) {
+      errors.push("Enter a fixed price value");
+    }
+
     return errors;
   };
 
@@ -367,6 +410,34 @@ export default function BuyXGetY() {
     setIsSubmitting(true);
     // Let the form submit naturally to Remix action
   };
+
+  const renderChildren = useCallback(
+    (isSelected) =>
+      isSelected && (
+        <TextField
+          type="number"
+          value={formData.percentage}
+          onChange={(val) => handleChange("percentage", val)}
+          autoComplete="off"
+          prefix="%"
+          min={1}
+          max={100}
+        />
+      ),
+    [formData.percentage],
+  );
+
+  const renderFixedChildren = (isSelected) =>
+    isSelected && (
+      <TextField
+        type="number"
+        value={formData.fixedPrice}
+        onChange={(val) => handleChange("fixedPrice", val)}
+        autoComplete="off"
+        prefix="$"
+        min={0}
+      />
+    );
 
   return (
     <Page
@@ -397,392 +468,408 @@ export default function BuyXGetY() {
                 value={JSON.stringify(formData)}
               />
 
-              {/* General */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h3" variant="headingSm" fontWeight="medium">
-                    General
-                  </Text>
-                  <TextField
-                    label="Campaign name"
-                    value={formData.title}
-                    onChange={(val) => handleChange("title", val)}
-                    autoComplete="off"
-                    required
-                  />
-                </BlockStack>
-              </Card>
-
-              {/* Customer Buys */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h3" variant="headingSm" fontWeight="medium">
-                    Customer buys
-                  </Text>
-
-                  {/* Responsive row */}
-                  <InlineStack gap="400" wrap>
-                    <div style={{ flex: 1, minWidth: "150px" }}>
-                      <TextField
-                        type="number"
-                        label="Minimum quantity of items"
-                        value={formData.minQuantity}
-                        onChange={(val) => handleChange("minQuantity", val)}
-                        autoComplete="off"
-                        min="1"
-                        required
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: "150px" }}>
-                      <Select
-                        label="Any items from"
-                        options={[
-                          { label: "Trigger Products", value: "products" },
-                          {
-                            label: "Trigger Collections",
-                            value: "collections",
-                          },
-                        ]}
-                        value={formData.triggerType}
-                        onChange={(val) => handleChange("triggerType", val)}
-                      />
-                    </div>
-
-                    <div style={{ alignSelf: "end", minWidth: "120px" }}>
-                      <Button
-                        onClick={openBuyPicker}
-                        variant="secondary"
-                        fullWidth
-                      >
-                        Browse
-                      </Button>
-                    </div>
-                  </InlineStack>
-
-                  {/* Display selected products */}
-                  {formData.selectedProducts.length > 0 && (
-                    <Card sectioned>
-                      <Text as="h4" variant="headingSm" fontWeight="medium">
-                        Buy Products ({formData.selectedProducts.length})
-                      </Text>
-                      <ResourceList
-                        resourceName={{
-                          singular: "product",
-                          plural: "products",
-                        }}
-                        items={formData.selectedProducts}
-                        renderItem={(product) => {
-                          const media = (
-                            <Thumbnail
-                              source={
-                                product.images?.[0]?.originalSrc ||
-                                product.image?.src ||
-                                ""
-                              }
-                              alt={product.title}
-                              size="small"
-                            />
-                          );
-                          return (
-                            <ResourceList.Item id={product.id} media={media}>
-                              <Text variant="bodyMd" as="span">
-                                {product.title}
-                              </Text>
-                              <div>
-
-                              <Button
-                                variant="plain"
-                                tone="critical"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    selectedProducts:
-                                      prev.selectedProducts.filter(
-                                        (p) => p.id !== product.id,
-                                      ),
-                                  }))
-                                }
-
-                              >
-                                Remove
-                              </Button>
-                              </div>
-                            </ResourceList.Item>
-                          );
-                        }}
-                      />
-                    </Card>
-                  )}
-                </BlockStack>
-              </Card>
-
-              {/* customer gets */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h3" variant="headingSm" fontWeight="medium">
-                    Customer Gets
-                  </Text>
-
-                  <InlineStack gap="400" wrap>
-                    <div style={{ flex: 1, minWidth: "150px" }}>
-                      <TextField
-                        type="number"
-                        label="Quantity of items"
-                        value={formData.getQuantity}
-                        onChange={(val) => handleChange("getQuantity", val)}
-                        autoComplete="off"
-                        min="1"
-                        required
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: "150px" }}>
-                      <Select
-                        label="Any items from"
-                        options={[
-                          { label: "Products", value: "products" },
-                          { label: "Collections", value: "collections" },
-                        ]}
-                        value={formData.getType}
-                        onChange={(val) => handleChange("getType", val)}
-                      />
-                    </div>
-
-                    <div style={{ alignSelf: "end", minWidth: "120px" }}>
-                      <Button
-                        onClick={openGetPicker}
-                        variant="secondary"
-                        fullWidth
-                      >
-                        Browse
-                      </Button>
-                    </div>
-                  </InlineStack>
-
-                  {formData.getProducts.length > 0 && (
-                    <Card sectioned>
-                      <Text as="h4" variant="headingSm" fontWeight="medium">
-                        Get Products ({formData.getProducts.length})
-                      </Text>
-                      <ResourceList
-                        resourceName={{
-                          singular: "product",
-                          plural: "products",
-                        }}
-                        items={formData.getProducts}
-                        renderItem={(product) => {
-                          const media = (
-                            <Thumbnail
-                              source={
-                                product.images?.[0]?.originalSrc ||
-                                product.image?.src ||
-                                ""
-                              }
-                              alt={product.title}
-                              size="small"
-                            />
-                          );
-                          return (
-                            <ResourceList.Item id={product.id} media={media}>
-                              <Text variant="bodyMd" as="span">
-                                {product.title}
-                              </Text>
-                              <div>
-
-                              <Button
-                                variant="plain"
-                                tone="critical"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    getProducts: prev.getProducts.filter(
-                                      (p) => p.id !== product.id,
-                                    ),
-                                  }))
-                                }
-                              >
-                                Remove
-                              </Button>
-                              </div>
-                            </ResourceList.Item>
-                          );
-                        }}
-                      />
-                    </Card>
-                  )}
-                </BlockStack>
-              </Card>
-
-              {/* Discount Settings */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h3" variant="headingSm" fontWeight="medium">
-                    Discount settings
-                  </Text>
-                  <ChoiceList
-                    allowMultiple
-                    title="Discount Type"
-                    choices={[
-                      { label: "Hidden", value: "hidden" },
-                      { label: "Optional", value: "optional" },
-                      { label: "Required", value: "required" },
-                    ]}
-                    selected={formData.discountType}
-                    onChange={(val) => handleChange("discountType", val)}
-                  />
-
-                  <BlockStack>
-                    <Text as="h4" variant="headingSm" fontWeight="regular">
-                      Combinations
+              <BlockStack gap="200">
+                {/* General */}
+                <Card>
+                  <BlockStack gap="400">
+                    <Text as="h3" variant="headingSm" fontWeight="medium">
+                      General
                     </Text>
-                    <Checkbox
-                      label="Product discounts"
-                      checked={formData.combines.productDiscounts}
-                      onChange={(val) =>
-                        handleCombinesChange("productDiscounts", val)
-                      }
-                    />
-                    <Checkbox
-                      label="Order discounts"
-                      checked={formData.combines.orderDiscounts}
-                      onChange={(val) =>
-                        handleCombinesChange("orderDiscounts", val)
-                      }
-                    />
-                    <Checkbox
-                      label="Shipping discounts"
-                      checked={formData.combines.shippingDiscounts}
-                      onChange={(val) =>
-                        handleCombinesChange("shippingDiscounts", val)
-                      }
+                    <TextField
+                      label="Campaign name"
+                      value={formData.title}
+                      onChange={(val) => handleChange("title", val)}
+                      autoComplete="off"
+                      required
                     />
                   </BlockStack>
+                </Card>
 
+                {/* Customer Buys */}
+                <Card>
+                  <BlockStack gap="400">
+                    <Text as="h3" variant="headingSm" fontWeight="medium">
+                      Customer buys
+                    </Text>
+
+                    {/* Responsive row */}
+                    <InlineStack gap="400" wrap>
+                      <div style={{ flex: 1, minWidth: "150px" }}>
+                        <TextField
+                          type="number"
+                          label="Minimum quantity of items"
+                          value={formData.minQuantity}
+                          onChange={(val) => handleChange("minQuantity", val)}
+                          autoComplete="off"
+                          min="1"
+                          required
+                        />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: "150px" }}>
+                        <Select
+                          label="Any items from"
+                          options={[
+                            { label: "Trigger Products", value: "products" },
+                            {
+                              label: "Trigger Collections",
+                              value: "collections",
+                            },
+                          ]}
+                          value={formData.triggerType}
+                          onChange={(val) => handleChange("triggerType", val)}
+                        />
+                      </div>
+
+                      <div style={{ alignSelf: "end", minWidth: "120px" }}>
+                        <Button
+                          onClick={openBuyPicker}
+                          variant="secondary"
+                          fullWidth
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </InlineStack>
+
+                    {/* Display selected products */}
+                    {formData.selectedProducts.length > 0 && (
+                      <Card sectioned>
+                        <Text as="h4" variant="headingSm" fontWeight="medium">
+                          Buy Products ({formData.selectedProducts.length})
+                        </Text>
+                        <ResourceList
+                          resourceName={{
+                            singular: "product",
+                            plural: "products",
+                          }}
+                          items={formData.selectedProducts}
+                          renderItem={(product) => {
+                            const media = (
+                              <Thumbnail
+                                source={
+                                  product.images?.[0]?.originalSrc ||
+                                  product.image?.src ||
+                                  ""
+                                }
+                                alt={product.title}
+                                size="small"
+                              />
+                            );
+                            return (
+                              <ResourceList.Item id={product.id} media={media}>
+                                <Text variant="bodyMd" as="span">
+                                  {product.title}
+                                </Text>
+                                <div>
+                                  <Button
+                                    variant="plain"
+                                    tone="critical"
+                                    onClick={() =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        selectedProducts:
+                                          prev.selectedProducts.filter(
+                                            (p) => p.id !== product.id,
+                                          ),
+                                      }))
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              </ResourceList.Item>
+                            );
+                          }}
+                        />
+                      </Card>
+                    )}
+                  </BlockStack>
+                </Card>
+
+                {/* customer gets */}
+                <Card>
+                  <BlockStack gap="400">
+                    <Text as="h3" variant="headingSm" fontWeight="medium">
+                      Customer Gets
+                    </Text>
+
+                    <InlineStack gap="400" wrap>
+                      <div style={{ flex: 1, minWidth: "150px" }}>
+                        <TextField
+                          type="number"
+                          label="Quantity of items"
+                          value={formData.getQuantity}
+                          onChange={(val) => handleChange("getQuantity", val)}
+                          autoComplete="off"
+                          min="1"
+                          required
+                        />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: "150px" }}>
+                        <Select
+                          label="Any items from"
+                          options={[
+                            { label: "Products", value: "products" },
+                            { label: "Collections", value: "collections" },
+                          ]}
+                          value={formData.getType}
+                          onChange={(val) => handleChange("getType", val)}
+                        />
+                      </div>
+
+                      <div style={{ alignSelf: "end", minWidth: "120px" }}>
+                        <Button
+                          onClick={openGetPicker}
+                          variant="secondary"
+                          fullWidth
+                        >
+                          Browse
+                        </Button>
+                      </div>
+                    </InlineStack>
+
+                    {formData.getProducts.length > 0 && (
+                      <Card sectioned>
+                        <Text as="h4" variant="headingSm" fontWeight="medium">
+                          Get Products ({formData.getProducts.length})
+                        </Text>
+                        <ResourceList
+                          resourceName={{
+                            singular: "product",
+                            plural: "products",
+                          }}
+                          items={formData.getProducts}
+                          renderItem={(product) => {
+                            const media = (
+                              <Thumbnail
+                                source={
+                                  product.images?.[0]?.originalSrc ||
+                                  product.image?.src ||
+                                  ""
+                                }
+                                alt={product.title}
+                                size="small"
+                              />
+                            );
+                            return (
+                              <ResourceList.Item id={product.id} media={media}>
+                                <Text variant="bodyMd" as="span">
+                                  {product.title}
+                                </Text>
+                                <div>
+                                  <Button
+                                    variant="plain"
+                                    tone="critical"
+                                    onClick={() =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        getProducts: prev.getProducts.filter(
+                                          (p) => p.id !== product.id,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              </ResourceList.Item>
+                            );
+                          }}
+                        />
+                      </Card>
+                    )}
+                  </BlockStack>
+                </Card>
+
+                {/* Discount Settings */}
+                <Card>
+                  <BlockStack gap="400">
+                    <Text as="h3" variant="headingSm" fontWeight="medium">
+                      Discount settings
+                    </Text>
+                    <ChoiceList
+                      title="Discount Type"
+                      choices={[
+                        { label: "Free", value: "free" },
+                        {
+                          label: "Percentage",
+                          value: "percentage",
+                          renderChildren,
+                        },
+                        {
+                          label: "Fixed Price",
+                          value: "fixed",
+                          renderChildren: renderFixedChildren,
+                        },
+                      ]}
+                      selected={formData.discountType}
+                      onChange={(val) => handleChange("discountType", val)}
+                    />
+
+                    <BlockStack>
+                      <Text as="h4" variant="headingSm" fontWeight="regular">
+                        Combinations
+                      </Text>
+                      <Checkbox
+                        label="Product discounts"
+                        checked={formData.combines.productDiscounts}
+                        onChange={(val) =>
+                          handleCombinesChange("productDiscounts", val)
+                        }
+                      />
+                      <Checkbox
+                        label="Order discounts"
+                        checked={formData.combines.orderDiscounts}
+                        onChange={(val) =>
+                          handleCombinesChange("orderDiscounts", val)
+                        }
+                      />
+                      <Checkbox
+                        label="Shipping discounts"
+                        checked={formData.combines.shippingDiscounts}
+                        onChange={(val) =>
+                          handleCombinesChange("shippingDiscounts", val)
+                        }
+                      />
+                    </BlockStack>
+
+                    <BlockStack gap="400">
+                      <InlineStack align="space-between">
+                        <Text as="h3" variant="headingSm" fontWeight="semibold">
+                          Maximum discount uses
+                        </Text>
+                        <p
+                          onClick={() => handleToggle("section1")}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <Icon
+                            source={
+                              openSections.section1
+                                ? CaretUpIcon
+                                : CaretDownIcon
+                            }
+                            tone="base"
+                          />
+                        </p>
+                      </InlineStack>
+                      <Collapsible open={openSections.section1}>
+                        <ChoiceList
+                          allowMultiple
+                          title=""
+                          choices={[
+                            {
+                              label: "Limit total number of uses",
+                              value: "limit_total",
+                              helpText:
+                                "Set a maximum number of times this discount can be used",
+                            },
+                            {
+                              label: "Limit to one use per customer",
+                              value: "limit_per_customer",
+                              helpText:
+                                "Allow each customer to use this discount only once",
+                            },
+                          ]}
+                          selected={formData.usageLimits}
+                          onChange={(val) => handleChange("usageLimits", val)}
+                        />
+                      </Collapsible>
+                    </BlockStack>
+                  </BlockStack>
+                </Card>
+
+                {/* Customer Eligibility */}
+                <Card>
                   <BlockStack gap="400">
                     <InlineStack align="space-between">
                       <Text as="h3" variant="headingSm" fontWeight="semibold">
-                        Maximum discount uses
+                        Customer eligibility
                       </Text>
                       <p
-                        onClick={() => handleToggle("section1")}
+                        onClick={() => handleToggle("section2")}
                         style={{ cursor: "pointer" }}
                       >
                         <Icon
                           source={
-                            openSections.section1 ? CaretUpIcon : CaretDownIcon
+                            openSections.section2 ? CaretUpIcon : CaretDownIcon
                           }
                           tone="base"
                         />
                       </p>
                     </InlineStack>
-                    <Collapsible open={openSections.section1}>
+                    <Collapsible open={openSections.section2}>
                       <ChoiceList
-                        allowMultiple
                         title=""
                         choices={[
-                          {
-                            label: "Limit total number of uses",
-                            value: "limit_total",
-                            helpText:
-                              "Set a maximum number of times this discount can be used",
-                          },
-                          {
-                            label: "Limit to one use per customer",
-                            value: "limit_per_customer",
-                            helpText:
-                              "Allow each customer to use this discount only once",
-                          },
+                          { label: "All customers", value: "all" },
+                          { label: "Customer segment", value: "segment" },
+                          { label: "Specific link", value: "link" },
+                          { label: "Customer location", value: "location" },
                         ]}
-                        selected={formData.usageLimits}
-                        onChange={(val) => handleChange("usageLimits", val)}
+                        selected={[formData.customerEligibility]}
+                        onChange={(val) =>
+                          handleChange("customerEligibility", val[0])
+                        }
                       />
                     </Collapsible>
                   </BlockStack>
-                </BlockStack>
-              </Card>
+                </Card>
 
-              {/* Customer Eligibility */}
-              <Card>
-                <BlockStack gap="400">
-                  <InlineStack align="space-between">
-                    <Text as="h3" variant="headingSm" fontWeight="semibold">
-                      Customer eligibility
+                {/* Schedule */}
+                <Card>
+                  <BlockStack gap="400">
+                    <Text as="h3" variant="headingSm" fontWeight="medium">
+                      Schedule
                     </Text>
-                    <p
-                      onClick={() => handleToggle("section2")}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <Icon
-                        source={
-                          openSections.section2 ? CaretUpIcon : CaretDownIcon
-                        }
-                        tone="base"
-                      />
-                    </p>
-                  </InlineStack>
-                  <Collapsible open={openSections.section2}>
-                    <ChoiceList
-                      title=""
-                      choices={[
-                        { label: "All customers", value: "all" },
-                        { label: "Customer segment", value: "segment" },
-                        { label: "Specific link", value: "link" },
-                        { label: "Customer location", value: "location" },
-                      ]}
-                      selected={[formData.customerEligibility]}
-                      onChange={(val) =>
-                        handleChange("customerEligibility", val[0])
-                      }
-                    />
-                  </Collapsible>
-                </BlockStack>
-              </Card>
+                    <FormLayout>
+                      <FormLayout.Group>
+                        <div style={{ maxWidth: "150px" }}>
+                          <TextField
+                            type="date"
+                            label="Start date"
+                            value={formData.startsAt}
+                            onChange={(val) => handleChange("startsAt", val)}
+                            required
+                          />
+                        </div>
+                        <div style={{ maxWidth: "100px" }}>
+                          <TextField
+                            type="time"
+                            label="Start time"
+                            value={formData.startTime}
+                            onChange={(val) => handleChange("startTime", val)}
+                          />
+                        </div>
+                        <div style={{ maxWidth: "150px" }}>
+                          <TextField
+                            type="date"
+                            label="End date"
+                            value={formData.endsAt}
+                            onChange={(val) => handleChange("endsAt", val)}
+                          />
+                        </div>
+                        <div style={{ maxWidth: "100px" }}>
+                          <TextField
+                            type="time"
+                            label="End time"
+                            value={formData.endTime}
+                            onChange={(val) => handleChange("endTime", val)}
+                          />
+                        </div>
+                      </FormLayout.Group>
+                    </FormLayout>
+                  </BlockStack>
+                </Card>
 
-              {/* Schedule */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h3" variant="headingSm" fontWeight="medium">
-                    Schedule
-                  </Text>
-                  <FormLayout>
-                    <FormLayout.Group>
-                      <TextField
-                        type="date"
-                        label="Start date"
-                        value={formData.startsAt}
-                        onChange={(val) => handleChange("startsAt", val)}
-                        required
-                      />
-                      <TextField
-                        type="time"
-                        label="Start time"
-                        value={formData.startTime}
-                        onChange={(val) => handleChange("startTime", val)}
-                      />
-                      <TextField
-                        type="date"
-                        label="End date"
-                        value={formData.endsAt}
-                        onChange={(val) => handleChange("endsAt", val)}
-                      />
-                      <TextField
-                        type="time"
-                        label="End time"
-                        value={formData.endTime}
-                        onChange={(val) => handleChange("endTime", val)}
-                      />
-                    </FormLayout.Group>
-                  </FormLayout>
-                </BlockStack>
-              </Card>
-
-              {/* Submit Button */}
-              <InlineStack align="end">
-                <Button variant="primary" submit loading={isSubmitting}>
-                  {isSubmitting ? "Saving..." : "Save Offer"}
-                </Button>
-              </InlineStack>
+                {/* Submit Button */}
+                <InlineStack align="end">
+                  <Button variant="primary" submit loading={isSubmitting}>
+                    {isSubmitting ? "Saving..." : "Save Offer"}
+                  </Button>
+                </InlineStack>
+              </BlockStack>
             </Form>
           </BlockStack>
         </Layout.Section>
